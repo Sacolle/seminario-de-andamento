@@ -138,19 +138,22 @@
 
 \begin{frame}{Fletcher}
   \begin{itemize}
-  \item<+-> Qual o nosso objeto de estudo então?
-  \item<+-> \textit{Equações do Fletcher}.
-  \item<+-> São equações que model o meio TTI (Tilted Transversely Isotropic).
-  \item<.-> Servem para analisar depósitos de óleo e gás no pré-sál.
-  \item<+-> Há uma versão implementada pelo Gabriel Freytag. Inicialmente desenvolvido pelo Nesi.
+  \item<+-> As \textit{Equações do Fletcher} são equações que modelam o meio TTI (Tilted Transversely Isotropic) usadas na analise de depósitos de óleo e gás no pré-sál.
+  \item<.-> Há uma versão implementada pelo Gabriel Freytag. Inicialmente desenvolvido pelo Nesi.
   \end{itemize}
+
+  \begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.3\textwidth]{stencil.png}
+  \end{figure}
+
 \end{frame}
 
 \begin{frame}{Funcionamento}
   \begin{itemize}
   \item<+-> É a discretização de equações diferenciais de onda.
-  \item<+-> Trabalha-se com a onda primária e secundária.
-  \item<+-> Realiza-se duas etapas:
+  \item<.-> Trabalha-se com a onda primária e secundária.
+  \item<.-> Realiza-se duas etapas:
     \begin{itemize}
     \item<+-> Propaga-se a onda gravada, salvando a cada $k$ passos.
     \item<+-> Lê-se a onda gravada a cada $k$ passos, propagando a onda no sentido contrário ao tempo.
@@ -198,10 +201,11 @@
 
 \section{Implementação}
 
-\begin{frame}[fragile]{Implementação}
+\begin{frame}[fragile]{Implementação do Baseline}
   \begin{itemize}
-  \item<+-> Para esse trabalho utilizou-se o algoritmo \textit{Fletcher}.
-  \item<+-> Implementou-se apenas a iteração para a frente no tempo, salvando a cada $k$ passos em disco.
+    \item Começou-se da implementação do Nesi.
+    \item Modelo Fork-Join para OpenMP.
+    \item Implementação em CUDA também.
   \end{itemize}
 
 \scriptsize
@@ -215,18 +219,16 @@
 \SetKwFunction{FDump}{WriteVolume}
 
 \SetKwInOut{Input}{Input}
-\Input{Ondas $pc, qc, pp, qp$, Iterações totais $st$, Escrita por passos $k$}
+\Input{Ondas $pc, qc, pp, qp$, Iterações totais $st$, Escrita a cada $k$}
 
 \BlankLine
-$n \longleftarrow 0$\;
-\For{$it \longleftarrow 1$ \KwTo $st$}{
+\For{$t \longleftarrow 1$ \KwTo $st$}{
   \FInsert{$pc, qc$}\;
   \tcp{Função Paralela}
     \FPropagate{$pp, pc, qp, qc$}\;
     \FSwap{$pp, pc, qp, qc$}\;
-    \If{$n \bmod k = 0$}{
+    \If{$t \bmod k = 0$}{
       \FDump{$pc$}\;
-      $n \longleftarrow n + 1$
     }
 }
   \end{algorithm}
@@ -239,52 +241,45 @@ $n \longleftarrow 0$\;
   \item<+-> Desafios de implementação:
     \begin{enumerate}
     \item<+-> Segmentar em blocos.
-    \item<+-> Realizar a comunicação inter-bloco.
-    \item<+-> Quebrar a dependência de dados de iterações.
-    \item<+-> Rediscretização do espaço das iterações.
+    \item<.-> Realizar a comunicação inter-bloco.
+    \item<.-> Quebrar a dependência de dados de iterações.
+    \item<.-> Rediscretização do espaço das iterações.
     \end{enumerate}
   \end{itemize}
 \end{frame}
 
 \begin{frame}[fragile]{Segmentação Espacial}
   \begin{itemize}
-  \item<+-> Comunicação inter-bloco adiciona \textit{checks}.
-  \item<+-> Utilizou-se a \emph{metaprogramação} para discretizar todos os casos possíveis.
-  \item<+-> Dessa forma cada ponto do cubo precisa de apenas 3 operações para determinar quais serão os vários acessos seguintes.
+    \item Comunicação inter-bloco adiciona \textit{checks}.
+    \item Aumenta o volume de dados por segmento.
   \end{itemize}
+  \begin{figure}[ht]
+      \centering
+      \includegraphics[width=0.35\textwidth]{neighbors.png}
+  \end{figure}
 
-  \lstset{basicstyle=\tiny}
-  \onslide<4>
-  \begin{lstlisting}[language=python]
-def make_cross_comp(d1, d2, lamb):
-    p = partial(assignment, d1 = d1, d2 = d2, lamb= lamb)
-    return f'''
-return ((
-    L11 * (
-        {p(+1, +1)} - {p(+1, -1)} - {p(-1, +1)} + {p(-1, -1)}
-    ) +
-    L12 * (
-        {p(+1, +2)} - {p(+1, -2)} - {p(-1, +2)} + {p(-1, -2)} + 
-        {p(+2, +1)} - {p(+2, -1)} - {p(-2, +1)} + {p(-2, -1)}
-    ) +
-        ...
-    L44 * (
-        {p(+4, +4)} - {p(+4, -4)} - {p(-4, +4)} + {p(-4, -4)}
-    )) * dinv);
-        '''
-   \end{lstlisting}
+\end{frame}
+
+\begin{frame}{Segmentação Espacial}
+  \begin{itemize}
+    \item<+-> Implementação atual se demonstrou muito boa para a computação em CPU.
+    \item<+-> Porém não escalou bem para GPU.
+    \item<.-> Cada bloco precisa dos seus 18 vizinhos.
+    \item<.-> Usando o \texttt{nvidia-smi} observou-se que a GPU ficava em 50\% enquanto o throughput de dados estava em 100\%.
+    \item<+-> Trabalha-se atualmente em um redisign para melhor aproveitar a GPU.
+  \end{itemize}
 \end{frame}
 
 \begin{frame}{Rediscretização Espacial}
   \begin{itemize}
   \item<+-> Como visto no pseudocódigo, a verão base alterna entre dois buffers.
-  \item<+-> Isso segura as execuções e limita quantas tarefas podem ser executadas, criando um ponto de sincronização desnecessário no contexto de tarefas.
+  \item<.-> Isso segura as execuções e limita quantas tarefas podem ser executadas, criando um ponto de sincronização desnecessário no contexto de tarefas.
   \item<+-> Nisso transformou-se o antigo processo de swap.
     \begin{align*}
        P_c &\leftarrow F(P_p) - P_c \\
        P_c &\;swap\; P_p
     \end{align*}
-  \item<+-> Para:
+  \item<.-> Para:
     \begin{align*}
       P_t  &\leftarrow F(P_{t-1}) - P_{t-2} 
     \end{align*}
@@ -294,56 +289,114 @@ return ((
 
 \section{Resultados Parciais}
 
-\begin{frame}{Resultados}
+% TODO: resultados parciais tem que ser extraído de tudo que foi obtido.
+
+
+\begin{frame}{Resultados: Desempenho em CPU}
   \begin{itemize}
-  \item<+-> A consequência disso no I/O é:
-    \begin{itemize}
-    \item<+-> A segmentação espacial reduziu o tamanho de bloco e aumentou o número de operações, permitindo a intercalação da tarefa entre computações.
-    \item<+-> A rediscretização fez com que o I/O deixasse de bloquear a execução da iteração seguinte.
-    \end{itemize}
-  \item<+-> Agora ele pode ser intercalado e a computação não depende do I/O acabar para começar.
+  \item Comparação com o \textit{fletcher-base} (OpenMP) em 6 máquinas CPU, métrica MSamples/s.
+  \item \starflet{} supera a melhor configuração do baseline em 3 máquinas
+  \item Contra o \textit{schedule} estático padrão, ganho de 63\% nas máquinas híbridas (P/E-cores).
   \end{itemize}
 \end{frame}
 
-\begin{frame}{Resultados}
+\begin{frame}{Desempenho em CPU}
     \begin{figure}[ht]
         \centering
-            % trim order: Left, Bottom, Right, Top
-        \includegraphics[page=1, trim=0cm 14.38cm 0cm 0cm, clip, width=\textwidth, height=1\textheight]{trace_560_1_4_0_starvz.pdf}
+        % trim order: Left, Bottom, Right, Top
+        \includegraphics[page=1, trim=0pt 305pt 0pt 0pt, clip, width=0.6\textwidth]{msamples.pdf}
+
+        \includegraphics[page=1, trim=0pt 221pt 0pt 26pt, clip, width=0.49\textwidth]{msamples.pdf}
+        \hfill
+        \includegraphics[page=1, trim=0pt 134pt 0pt 112pt, clip, width=0.49\textwidth]{msamples.pdf}
     \end{figure}
 \end{frame}
 
-\begin{frame}{Tabela}
-    \begin{itemize}
-    \item Olhando mais a fundo, temos a tabela.
-    \end{itemize}
-
-    \begin{table}[ht]
+\begin{frame}{Desempenho em CPU}
+    \begin{figure}[ht]
         \centering
-        \caption{Amount of Tasks executed with their Mean, Min and Max execution time in milliseconds.}
-        \label{tab:iobench}
-        \begin{tabular}{lrrrr}
-            \toprule
-            Task & Amount & Mean & Min & Max \\
-            \waveinsert & 50 & 2.9 & 1.83 & 6.33 \\
-            \waveprop & 3200 & 99100 & 55100 & 451000 \\
-            \blockwrite & 704 & 39.5 & 13.9 & 628 \\
-            \bottomrule
-        \end{tabular}
-    \end{table}
+        \includegraphics[page=1, trim=0pt 305pt 0pt 0pt, clip, width=0.6\textwidth]{msamples.pdf}
 
+        \includegraphics[page=1, trim=0pt 0pt 0pt 199pt, clip, height=0.65\textheight]{msamples.pdf}
+    \end{figure}
+\end{frame}
+
+\begin{frame}{Sobreposição de Iterações}
+  \begin{itemize}
+  \item Sem a barreira global, até 7 iterações executam ao mesmo tempo.
+  \item O I/O é intercalado com a computação, em vez de bloquear a iteração seguinte.
+  \item Usamos \texttt{mmap} para fazer um volume final igual e isso fica lento em volumes maiores.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Sobreposição de Iterações}
+    \begin{figure}[ht]
+        \centering
+        \includegraphics[width=\textwidth, height=0.85\textheight, keepaspectratio]{overlap.pdf}
+    \end{figure}
+\end{frame}
+
+\begin{frame}{Desempenho em GPU}
+  \begin{itemize}
+  \item<+-> Em GPU, os resultados ainda não são satisfatórios.
+  \item Para todas as máquinas e escalonadores, \starflet{} fica muito abaixo do \textit{fletcher-base}.
+  \item Na \texttt{tupi}, o melhor caso chega a $\sim$1000 MSamples/s, contra $\sim$8000 do baseline.
+  \item<+-> Consistente com o gargalo de transferência dos 18 vizinhos de cada bloco.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Desempenho em GPU}
+    \begin{figure}[ht]
+        \centering
+        \includegraphics[width=\textwidth, height=0.85\textheight, keepaspectratio]{ideal-seg-msamples.pdf}
+    \end{figure}
 \end{frame}
 
 \section{Conclusão}
 
 \begin{frame}{Conclusão}
   \begin{itemize}
-  \item<+-> O uso do STF foi extremamente útil a implementação do RTM.
+
+  \item<+-> O modelo STF com StarPU se mostrou vantajoso em CPU.
     \begin{itemize}
-    \item<+-> Os padrões de implementação favorecem essa aplicação \textit{stencil}.
-    \item<+-> A necessidade de transferência de dados já uma capacidade provada dos modelos STF, principalmente do StarPU.
+    \item<.-> \starflet{} é competitivo com o \textit{fletcher-base}, pricipalmente nas máquinas de HPC mais modernas.
+    \item<.-> Sem a barreira global, iterações se sobrepõem e o I/O é intercalado com a computação.
     \end{itemize}
-  \item<+-> Precisa-se de mais análises comparativas com implementações paralelas convencionais para validar o escopo dos possíveis ganhos de performance.
+  \item<+-> Ainda há limitações:
+    \begin{itemize}
+    \item<.-> A escrita via \texttt{mmap} fica lenta em volumes maiores.
+    \item<.-> Em GPU, o desempenho ainda está muito abaixo do baseline, limitado pela transferência dos vizinhos de cada bloco.
+    \end{itemize}
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Publicações}
+
+  \begin{itemize}
+    \item<+-> Publicações solo.
+    \begin{itemize}
+      \item<.-> Pequena publicação no ERAD-RS.
+      \item<.-> REJECT no SSCAD.
+      \item<.-> Submission no PDP.
+    \end{itemize}
+    \item<+-> Publicações do Lab.
+    \begin{itemize}
+      \item<.-> Publicação no CARLA sobre ferramentas de ensino de Programação Distribuida e Paralela.
+      \item<.-> Publicação no UCC sobre o uso de simulações para model Cloud Offloading.
+      \item<.-> Trabalhando em um artigo para o CCGRID sobre o mesmo assunto.
+    \end{itemize}
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Metas Atuais}
+  \begin{itemize}
+    \item<+-> Refazer uma partição de blocos mais favorável a GPU
+    \begin{itemize}
+      \item<.-> Implementação de Halo
+      \item<.-> Implementação de \textit{parallel workers} para a CPU
+    \end{itemize}
+    \item<+-> Com resultados satisfatórios, mover para MPI
+    \item<.-> Avaliar comparativamente com o trabalho do Spadotto.
   \end{itemize}
 \end{frame}
 
