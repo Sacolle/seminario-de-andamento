@@ -78,7 +78,7 @@
 \begin{frame}{Contexto}
   \begin{itemize}
   \item<+-> \textit{High performance Computing} já é um campo complexo.
-  \item<+-> Com o crescimento de IA, há o surgimento de novos aceleradores.
+  \item<+-> Há uma diversidade crescente de aceleradores.
     \begin{itemize}
     \item CPU
     \item GPU
@@ -86,17 +86,17 @@
     \item TPUs
     \item Hardware Especializado
     \end{itemize}
-  \item<+-> Como usar todo o poder de processamento de um parque de alta performance?
-  \item<.-> Faz sentido usarmos apenas a GPU nos nodos do parque?
-  \item<.-> Porque não todos os recursos?
+  \item<+-> Como usar todo o poder de processamento de um parque de alto desempenho?
+  \item<.-> Faz sentido usarmos apenas a GPU nos nós do parque?
+  \item<.-> Por que não todos os recursos?
   \end{itemize}
 \end{frame}
 
 \begin{frame}{Sequential Task Flow}
   \begin{itemize}
-  \item<+-> \textit{Sequential Task Flow} (STF) é uma técnica de divisão de trabalho em \textbf{tarefas}.
-  \item<+-> Essas \textbf{tarefas} podem depender da conclusão de outras tarefas para executar, formando um DAG.
-  \item<+-> Elas são submetidas sequencialmente e a relação entre as dependências é determinada pelo \textit{runtime}. 
+  \item<+-> \textit{Sequential Task Flow} (STF) é uma forma de submeter \textbf{tarefas}: o programa as submete sequencialmente, declarando como cada uma acessa os dados (leitura/escrita).
+  \item<+-> A partir desses acessos, o \textit{runtime} infere as dependências entre as \textbf{tarefas}, formando um DAG.
+  \item<+-> A submissão é sequencial por causa do STF; em outros \textit{runtimes}, como o OpenMP com tarefas recursivas, a submissão pode ser paralela.
   \end{itemize}
   \uncover<4>{
     \centering
@@ -117,29 +117,31 @@
 
 \begin{frame}{StarPU}
   \begin{itemize}
-  \item StarPU é um desses runtimes de STF.
-  \item Gerência dependências de dado e memória automaticamente.
+  \item StarPU é um \textit{runtime} baseado em tarefas que usa o modelo STF.
+  \item Gerencia dependências de dados e transferências de memória automaticamente.
   \item Permite vários escalonadores diferentes.
-  \item Fácil adição de diferentes fontes de execução de código.
+  \item Uma tarefa pode ter implementações para diferentes unidades de processamento (CPU, GPU).
   \end{itemize}
 \end{frame}
 
 
-\begin{frame}{Multiplos Executores}
-  \begin{figure}[ht]
-    \centering
-    \includegraphics[width=0.8\textwidth]{codelet.png}
-  \end{figure}
+\begin{frame}[fragile]{Múltiplas Implementações}
+\begin{lstlisting}[language=C, basicstyle=\ttfamily\small, keywordstyle=\color{blue!70!black}\bfseries, frame=single]
+struct starpu_codelet rtm_codelet = {
+    .cpu_funcs  = { rtm_kernel },
+    .cuda_funcs = { rtm_kernel_cuda },
+};
+\end{lstlisting}
   \begin{itemize}
-  \item Implementação de um \textit{codelet} com dois executores: em CPU e em GPU.
-  \item Os diferentes escalonadores são capazes de distribuir a carga entre os possíveis locais de execução.
+  \item Um \textit{codelet} com duas implementações: CPU e GPU (CUDA).
+  \item Para cada tarefa, o escalonador escolhe em qual das implementações disponíveis executar.
   \end{itemize}
 \end{frame}
 
 \begin{frame}{Fletcher}
   \begin{itemize}
-  \item<+-> As \textit{Equações do Fletcher} são equações que modelam o meio TTI (Tilted Transversely Isotropic) usadas na analise de depósitos de óleo e gás no pré-sál.
-  \item<.-> Há uma versão implementada pelo Gabriel Freytag. Inicialmente desenvolvido pelo Nesi.
+  \item<+-> As \textit{Equações do Fletcher} modelam a propagação de ondas em meios TTI (Tilted Transversely Isotropic) e são usadas na RTM para identificar depósitos de óleo e gás no pré-sal.
+  \item<.-> Versão de referência: \textit{fletcher-base}, de Serpa et al., com versão de Gabriel Freytag.
   \end{itemize}
 
   \begin{figure}[ht]
@@ -164,37 +166,37 @@
 
 \begin{frame}{Funcionamento}
   \begin{itemize}
-  \item<+-> A versão base, do Nesi, foca-se apenas na etapa na \textit{forward}, salvando o meio a cada $k$ passos em disco.
-  \item<.-> Focando apenas nas computações dentro de um \textit{shot}
-  \item<+-> Nos baseamos nele para construir a nossa versão..
+  \item<+-> O \textit{fletcher-base} implementa apenas a etapa \textit{forward}, salvando o meio a cada $k$ passos em disco.
+  \item<.-> Focando apenas nas computações dentro de um \textit{shot}.
+  \item<+-> Nos baseamos nele para construir a nossa versão.
   \end{itemize}
 \end{frame}
 
 \begin{frame}{Limitações}
   \begin{itemize}
   \item<+-> Os volumes de dados podem ser enormes.
-  \item<.-> Um volume de $1024 \times 1024 \times 512$ salvo em ponto fluante de dupla precisão consite em $4Gb$.
+  \item<.-> Um volume de $1024 \times 1024 \times 512$ em ponto flutuante de precisão simples ocupa $2\,GB$.
   \item<.-> Logo, o processo de salvar a cada $k$ passos e depois ler nessa mesma taxa é muito custoso.
   \item<+-> O algoritmo é \textbf{I/O bound}.
-  \item<+-> Muito esforço tem que vir do programador para gerir essas transfências de dados e maximizar o processamento das máquinas.
-  \item<.-> Há pesquisas dos outros labs sobre isso.
-  \item<.-> Além disso, com um volume grande o suficiente, computação em um único nodo não é viável.
+  \item<+-> Na versão base, a escrita é síncrona: a computação para enquanto o volume é escrito.
+  \item<.-> Há trabalhos sobre isso, como Künas et al. (2025) e AlOnazi et al. (2019).
+  \item<.-> Além disso, com um volume grande o suficiente, o meio e seus \textit{snapshots} não cabem na memória de um único nó, exigindo distribuição.
   \end{itemize}
 \end{frame}
 
 
 \begin{frame}{\starflet}
   \begin{itemize}
-  \item<+-> O meu trabalho apresenta \starflet.
-  \item<.-> Uma implementação do Fletcher usando STF em primeira ordem. 
-  \item<.-> Baseado na implementação do Nesi.
+  \item<+-> Este trabalho apresenta \starflet.
+  \item<.-> Uma implementação do Fletcher usando STF em primeira ordem.
+  \item<.-> Baseada no \textit{fletcher-base}.
     \begin{itemize}
     \item<+-> O espaço é segmentado em blocos.
-    \item<+-> Cada tarefa, distribuida aos trabalhadores, é de computar um dos blocos.
+    \item<+-> Cada tarefa, distribuída aos trabalhadores, é de computar um dos blocos.
     \item<+-> Cada iteração depende das anteriores.
-    \item<+-> É possível submeter todas as tarefas enquanto o código executa, sem problemas de sincronização.
+    \item<+-> É possível submeter todas as tarefas enquanto o código executa, sem barreiras globais.
     \end{itemize}
-  \item<+-> Modelar com o StarPU permitiu \textbf{naturalmente} gerar a quebra das iterações e do \textit{weaving} do I/O.
+  \item<+-> Modelar com o StarPU permitiu \textbf{naturalmente} gerar a quebra das iterações e a intercalação do I/O com a computação.
   \end{itemize}
 \end{frame}
 
@@ -203,7 +205,7 @@
 
 \begin{frame}[fragile]{Implementação do Baseline}
   \begin{itemize}
-    \item Começou-se da implementação do Nesi.
+    \item Partimos do \textit{fletcher-base} (Serpa et al.).
     \item Modelo Fork-Join para OpenMP.
     \item Implementação em CUDA também.
   \end{itemize}
@@ -231,6 +233,7 @@
       \FDump{$pc$}\;
     }
 }
+\caption{Algoritmo do \textit{fletcher-base}.}
   \end{algorithm}
 
 
@@ -243,7 +246,7 @@
     \item<+-> Segmentar em blocos.
     \item<.-> Realizar a comunicação inter-bloco.
     \item<.-> Quebrar a dependência de dados de iterações.
-    \item<.-> Rediscretização do espaço das iterações.
+    \item<.-> Remover o \textit{swap} entre os dois buffers.
     \end{enumerate}
   \end{itemize}
 \end{frame}
@@ -266,13 +269,13 @@
     \item<+-> Porém não escalou bem para GPU.
     \item<.-> Cada bloco precisa dos seus 18 vizinhos.
     \item<.-> Usando o \texttt{nvidia-smi} observou-se que a GPU ficava em 50\% enquanto o throughput de dados estava em 100\%.
-    \item<+-> Trabalha-se atualmente em um redisign para melhor aproveitar a GPU.
+    \item<+-> Trabalha-se atualmente em um redesign para melhor aproveitar a GPU.
   \end{itemize}
 \end{frame}
 
-\begin{frame}{Rediscretização Espacial}
+\begin{frame}{Remoção do Swap}
   \begin{itemize}
-  \item<+-> Como visto no pseudocódigo, a verão base alterna entre dois buffers.
+  \item<+-> No algoritmo do \textit{fletcher-base}, a versão base alterna entre dois buffers.
   \item<.-> Isso segura as execuções e limita quantas tarefas podem ser executadas, criando um ponto de sincronização desnecessário no contexto de tarefas.
   \item<+-> Nisso transformou-se o antigo processo de swap.
     \begin{align*}
@@ -281,9 +284,9 @@
     \end{align*}
   \item<.-> Para:
     \begin{align*}
-      P_t  &\leftarrow F(P_{t-1}) - P_{t-2} 
+      P_t  &\leftarrow F(P_{t-1}) - P_{t-2}
     \end{align*}
-    
+  \item<+-> Implicação: o bloco em $t$ depende só de $t-1$ e $t-2$, então a iteração $t+1$ pode começar antes de $t$ terminar, e a escrita de $P_t$ não bloqueia mais a computação seguinte.
   \end{itemize}
 \end{frame}
 
@@ -301,25 +304,27 @@
 \end{frame}
 
 \begin{frame}{Desempenho em CPU}
-    \begin{figure}[ht]
-        \centering
-        % trim order: Left, Bottom, Right, Top
-        \includegraphics[page=1, trim=0pt 305pt 0pt 0pt, clip, width=0.6\textwidth]{msamples.pdf}
+    \centering
+    % trim order: Left, Bottom, Right, Top
+    \makebox[\textwidth]{\includegraphics[page=1, trim=0pt 221pt 0pt 26pt, clip, width=0.88\paperwidth]{msamples.pdf}}
 
-        \includegraphics[page=1, trim=0pt 221pt 0pt 26pt, clip, width=0.49\textwidth]{msamples.pdf}
-        \hfill
-        \includegraphics[page=1, trim=0pt 134pt 0pt 112pt, clip, width=0.49\textwidth]{msamples.pdf}
-    \end{figure}
+    \includegraphics[page=1, trim=20pt 306.6pt 40pt 0pt, clip, width=0.6\textwidth]{msamples.pdf}
 \end{frame}
 
 \begin{frame}{Desempenho em CPU}
-    \begin{figure}[ht]
-        \centering
-        \includegraphics[page=1, trim=0pt 305pt 0pt 0pt, clip, width=0.6\textwidth]{msamples.pdf}
+    \centering
+    \makebox[\textwidth]{\includegraphics[page=1, trim=0pt 134pt 0pt 112pt, clip, width=0.88\paperwidth]{msamples.pdf}}
 
-        \includegraphics[page=1, trim=0pt 0pt 0pt 199pt, clip, height=0.65\textheight]{msamples.pdf}
-    \end{figure}
+    \includegraphics[page=1, trim=20pt 306.6pt 40pt 0pt, clip, width=0.6\textwidth]{msamples.pdf}
 \end{frame}
+
+\begin{frame}{Desempenho em CPU}
+    \centering
+    \includegraphics[page=1, trim=0pt 33pt 0pt 199pt, clip, width=0.88\paperwidth, height=0.78\textheight, keepaspectratio]{msamples.pdf}
+
+    \includegraphics[page=1, trim=20pt 306.6pt 40pt 0pt, clip, width=0.6\textwidth]{msamples.pdf}
+\end{frame}
+
 
 \begin{frame}{Sobreposição de Iterações}
   \begin{itemize}
@@ -330,15 +335,13 @@
 \end{frame}
 
 \begin{frame}{Sobreposição de Iterações}
-    \begin{figure}[ht]
-        \centering
-        \includegraphics[width=\textwidth, height=0.85\textheight, keepaspectratio]{overlap.pdf}
-    \end{figure}
+    \centering
+    \makebox[\textwidth]{\includegraphics[width=\paperwidth, height=\textheight, keepaspectratio]{overlap.pdf}}
 \end{frame}
 
 \begin{frame}{Desempenho em GPU}
   \begin{itemize}
-  \item<+-> Em GPU, os resultados ainda não são satisfatórios.
+  \item<+-> Em GPU, os resultados ainda são insatisfatórios.
   \item Para todas as máquinas e escalonadores, \starflet{} fica muito abaixo do \textit{fletcher-base}.
   \item Na \texttt{tupi}, o melhor caso chega a $\sim$1000 MSamples/s, contra $\sim$8000 do baseline.
   \item<+-> Consistente com o gargalo de transferência dos 18 vizinhos de cada bloco.
@@ -346,10 +349,9 @@
 \end{frame}
 
 \begin{frame}{Desempenho em GPU}
-    \begin{figure}[ht]
-        \centering
-        \includegraphics[width=\textwidth, height=0.85\textheight, keepaspectratio]{ideal-seg-msamples.pdf}
-    \end{figure}
+    \centering
+    % trim off the ggplot title and subtitle
+    \makebox[\textwidth]{\includegraphics[trim=0pt 0pt 0pt 45pt, clip, width=\paperwidth, height=\textheight, keepaspectratio]{ideal-seg-msamples.pdf}}
 \end{frame}
 
 \section{Conclusão}
@@ -359,7 +361,7 @@
 
   \item<+-> O modelo STF com StarPU se mostrou vantajoso em CPU.
     \begin{itemize}
-    \item<.-> \starflet{} é competitivo com o \textit{fletcher-base}, pricipalmente nas máquinas de HPC mais modernas.
+    \item<.-> \starflet{} é competitivo com o \textit{fletcher-base}, principalmente nas máquinas de HPC mais modernas.
     \item<.-> Sem a barreira global, iterações se sobrepõem e o I/O é intercalado com a computação.
     \end{itemize}
   \item<+-> Ainda há limitações:
@@ -367,6 +369,18 @@
     \item<.-> A escrita via \texttt{mmap} fica lenta em volumes maiores.
     \item<.-> Em GPU, o desempenho ainda está muito abaixo do baseline, limitado pela transferência dos vizinhos de cada bloco.
     \end{itemize}
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Metas Atuais}
+  \begin{itemize}
+    \item<+-> Refazer uma partição de blocos mais favorável a GPU
+    \begin{itemize}
+      \item<.-> Implementação de Halo
+      \item<.-> Implementação de \textit{parallel workers} para a CPU
+    \end{itemize}
+    \item<+-> Com resultados satisfatórios, mover para MPI
+    \item<.-> Avaliar comparativamente com o trabalho do Spadotto.
   \end{itemize}
 \end{frame}
 
@@ -388,17 +402,6 @@
   \end{itemize}
 \end{frame}
 
-\begin{frame}{Metas Atuais}
-  \begin{itemize}
-    \item<+-> Refazer uma partição de blocos mais favorável a GPU
-    \begin{itemize}
-      \item<.-> Implementação de Halo
-      \item<.-> Implementação de \textit{parallel workers} para a CPU
-    \end{itemize}
-    \item<+-> Com resultados satisfatórios, mover para MPI
-    \item<.-> Avaliar comparativamente com o trabalho do Spadotto.
-  \end{itemize}
-\end{frame}
 
 
 \backmatter
